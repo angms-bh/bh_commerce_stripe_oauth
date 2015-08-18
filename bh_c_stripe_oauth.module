@@ -1,0 +1,114 @@
+<?php
+
+define('BH_C_STRIPE_CLIENT_ID', '');
+define('STRIPE_TOKEN_URI', 'https://connect.stripe.com/oauth/token');
+define('BH_C_STRIPE_SECRET_KEY', '');
+
+
+function bh_c_stripe_oauth_menu() {
+	$items = array();
+	//Create the callback URL to be used by stripe
+	$items['bh_c_stripe_oauth/callback'] = array(
+			'title' => 'bh_c_stripe_oauth_callback',
+			'page callback' => '_bh_c_stripe_oauth_handle_callback',
+			'access callback' => '_bh_c_stripe_oauth_handle_callback_access',
+			'type' => MENU_CALLBACK,
+	);
+
+	
+	$items['admin/vendor/auth-stripe'] = array(
+			'title' => 'Authenticate Stripe Account',
+			'description' => 'In order to receive payments, you must authenticate your Stripe Account.',
+			'page callback' => '_bh_vendor_auth_stripe',
+			'access arguments' => array('vendor administration'),
+			'type' => MENU_NORMAL_ITEM,
+	);	
+	
+	return $items;
+}
+
+function _bh_vendor_auth_stripe() {
+	$code = $_GET['code'];
+	$return_str = 'Successful Connection';
+	if ($code== 'failed') {
+		$return_str = $_GET['errmsg'];		
+	} else if ($code == NULL) {
+		$link_url = 'https://connect.stripe.com/oauth/authorize?response_type=code&client_id='
+				. BH_C_STRIPE_CLIENT_ID .  '&scope=read_write';
+		$return_str = l('Connect to Stripe',$link_url);
+	}
+	return $return_str;
+}
+
+
+function _bh_c_stripe_oauth_handle_callback() {
+	$scope = $_GET['scope'];
+	$code = $_GET['code'];
+	$err = $_GET['error'];
+	$errmsg = $_GET['error_description'];
+	$fragment = 'overlay=admin/vendor/auth-stripe';
+	//The connection has been successful.
+	//drupal_set_message('scope = ' . $scope . ',code=' . $code . ', error = ' . $err . ', error_description=' . $errmsg);
+	$query = array('code' => 'success');
+	if ($code != NULL) {
+		//Initiate a connection following the example from Commerce Stripe to get the
+		//Access token
+		//make_request_for_token($code);
+		$resp = make_request_for_token_curl($code);
+		
+		//Store the access token in the database
+		set_vendor_and_stripe_user($resp['stripe_user_id']);
+
+		//Set the success code for the page redirecting to
+		$query = array('code' => 'success');	
+
+	//The connection was a failure.
+	} else if ($err != NULL) {
+		$query = array('code' => 'failed', 'errmsg' => $errmsg);
+		
+	}
+	
+	//drupal_goto('', array('fragment' => $fragment, 'query' => $query));
+	drupal_goto('admin/vendor/auth-stripe', array('query' => $query));
+	
+	
+}
+
+function _bh_c_stripe_oauth_handle_callback_access() {
+	return TRUE;
+}
+
+
+function set_vendor_and_stripe_user($stripe_user_id) {
+	global $user;
+	//$db_fields['tk_vendor_user_reference'] = (int)$user;
+	$db_fields['stripe_user_id'] = $stripe_user_id;
+	$db_fields['date_created'] = time();
+	
+	db_merge('bh_vendor_stripe_access')->key(array('tk_vendor_user_reference' => (int)$user->uid))->fields($db_fields)->execute();
+}
+
+function make_request_for_token_curl($auth_code) {
+	$token_request_body  = array(
+			'client_secret' => BH_C_STRIPE_SECRET_KEY,
+			'code' => $auth_code,
+			'grant_type' => 'authorization_code',
+			'client_id' => BH_C_STRIPE_CLIENT_ID,
+	);	
+	
+	
+	$req = curl_init(STRIPE_TOKEN_URI);
+	curl_setopt($req, CURLOPT_RETURNTRANSFER, true);
+	curl_setopt($req, CURLOPT_POST, true );
+	curl_setopt($req, CURLOPT_POSTFIELDS, http_build_query($token_request_body));
+	
+	$respCode = curl_getinfo($req, CURLINFO_HTTP_CODE);
+	$resp = json_decode(curl_exec($req), true);
+	curl_close($req);
+	dpm($resp);
+	//dpm('make_request_for_token_curl=' . $resp['access_token']);
+	return $resp;
+	
+}
+
+

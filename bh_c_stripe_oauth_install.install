@@ -1,0 +1,29 @@
+<?php 
+function bh_c_stripe_oauth_install_schema() {
+	$schema = array();
+	$schema['bh_vendor_stripe_access'] = array(
+		'description' => 'The base table for information concerning accessing stripe',
+		'fields' => array(			
+			'tk_vendor_user_reference' => array(
+    		'description' => 'Vendor user id',
+    		'type' => 'int',
+    		'not null' => TRUE,
+  		),
+			'stripe_user_id' => array(
+				'description' => 'Stripe Account id',
+				'type'        => 'varchar',
+				'length'      => 255,
+				'not null'    => TRUE,				
+			),	
+
+			'date_created' => array(
+				'description' => 'Date this was created',
+				'type' => 'int',
+				'not null' => TRUE,
+				'default' => 0,
+			),			
+		),
+		'primary key' => array('tk_vendor_user_reference'),
+	);
+	return $schema;
+}
